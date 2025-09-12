@@ -11,13 +11,13 @@ PKG_RELEASE:=5
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://www.github.com/pymumu/smartdns.git
-PKG_SOURCE_VERSION:=aa6146838262b47882835a8727e76f6cd033dd17
+PKG_SOURCE_VERSION:=3c4f2800585071880b60cc19177d47aaddebfdc9
 # PKG_MIRROR_HASH:=skip
 
 SMARTDNS_WEBUI_VERSION:=1.0.0
 SMARTDNS_WEBUI_SOURCE_PROTO:=git
 SMARTDNS_WEBUI_SOURCE_URL:=https://github.com/pymumu/smartdns-webui.git
-SMARTDNS_WEBUI_SOURCE_VERSION:=95f5d622fd014713aa2991190cbb62a2d58024b5
+SMARTDNS_WEBUI_SOURCE_VERSION:=3da9197b5f7b55c1fcc7f877b085b4e4a36caa1a
 SMARTDNS_WEBUI_FILE:=smartdns-webui-$(SMARTDNS_WEBUI_VERSION).tar.gz
 
 PKG_MAINTAINER:=Nick Peng <pymumu@gmail.com>
@@ -140,4 +140,3 @@ endef
 $(eval $(call BuildPackage,smartdns))
 $(eval $(call RustBinPackage,smartdns-ui))
 $(eval $(call BuildPackage,smartdns-ui))
-
