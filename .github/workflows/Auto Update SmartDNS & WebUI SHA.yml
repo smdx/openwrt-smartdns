@@ -159,3 +159,11 @@ jobs:
           echo "webui_sha=${{ steps.webui.outputs.sha }}"
           echo "webui_msg_b64=${{ steps.webui.outputs.msg }}"
           echo "pkg_release=${{ steps.current_sha.outputs.pkg_release }}"
+
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 5
+          keep_minimum_runs: 5
