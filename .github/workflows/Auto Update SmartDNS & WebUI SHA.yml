@@ -229,3 +229,11 @@ jobs:
           echo "release_converted=${{ steps.release.outputs.release_converted }}"
           echo "pkg_version=${{ steps.current_sha.outputs.pkg_version }}"
           echo "pkg_release=${{ steps.current_sha.outputs.pkg_release }}"
+          
+      - name: Delete workflow runs
+        uses: ophub/delete-releases-workflows@main
+        with:
+          delete_workflows: true
+          workflows_keep_day: 5
+          gh_token: ${{ secrets.GITHUB_TOKEN }}
+          
