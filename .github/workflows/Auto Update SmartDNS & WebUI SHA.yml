@@ -16,7 +16,7 @@ jobs:
       - name: Get latest smartdns commit SHA and message (base64)
         id: smartdns
         run: |
-          git clone --depth 1 https://github.com/pymumu/smartdns temp-smartdns
+          git clone --depth 1 https://github.com/PikuZheng/smartdns temp-smartdns
           echo "sha=$(git -C temp-smartdns rev-parse HEAD)" >> $GITHUB_OUTPUT
           msg=$(git -C temp-smartdns log -1 --pretty=format:'%s' | base64 -w0)
           echo "msg=$msg" >> $GITHUB_OUTPUT
@@ -24,63 +24,54 @@ jobs:
       - name: Get latest smartdns-webui commit SHA and message (base64)
         id: webui
         run: |
-          git clone --depth 1 https://github.com/pymumu/smartdns-webui temp-smartdns-webui
+          git clone --depth 1 https://github.com/PikuZheng/smartdns-webui temp-smartdns-webui
           echo "sha=$(git -C temp-smartdns-webui rev-parse HEAD)" >> $GITHUB_OUTPUT
           msg=$(git -C temp-smartdns-webui log -1 --pretty=format:'%s' | base64 -w0)
           echo "msg=$msg" >> $GITHUB_OUTPUT
 
-      - name: Get latest smartdns release tag and convert to PKG_VERSION (jq fallback, non-failing)
-        id: release
+      - name: Get latest smartdns release tag
+        id: smartdns_release
         run: |
-          # try releases/latest, then fallback to tags list; don't fail if GitHub API rate-limits or has no release
           set -euo pipefail
-
-          resp=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/pymumu/smartdns/releases/latest" || true)
+          resp=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/PikuZheng/smartdns/releases/latest" || true)
           tag=$(echo "$resp" | jq -r '.tag_name // .name // empty' 2>/dev/null || true)
-
           if [ -z "$tag" ]; then
-            resp2=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/pymumu/smartdns/tags?per_page=1" || true)
+            resp2=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/PikuZheng/smartdns/tags?per_page=1" || true)
             tag=$(echo "$resp2" | jq -r '.[0].name // empty' 2>/dev/null || true)
           fi
-
-          # sanitize
           tag=$(echo "$tag" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          echo "tag=$tag" >> $GITHUB_OUTPUT
 
-          # derive numeric part:
-          # - strip leading "Release" (case-insensitive) if present
-          # - else strip leading "v" or "V"
-          num="$tag"
-          num=$(echo "$num" | sed -E 's/^[Rr]elease//; s/^[vV]//; s/^[[:space:]]*//')
-
-          year=$(date -u +%Y)
-          if [ -n "$num" ]; then
-            converted="1.${year}.${num}"
-          else
-            converted=""
+      - name: Get latest smartdns-webui release tag
+        id: webui_release
+        run: |
+          set -euo pipefail
+          resp=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/PikuZheng/smartdns-webui/releases/latest" || true)
+          tag=$(echo "$resp" | jq -r '.tag_name // .name // empty' 2>/dev/null || true)
+          if [ -z "$tag" ]; then
+            resp2=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/PikuZheng/smartdns-webui/tags?per_page=1" || true)
+            tag=$(echo "$resp2" | jq -r '.[0].name // empty' 2>/dev/null || true)
           fi
+          tag=$(echo "$tag" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          echo "tag=$tag" >> $GITHUB_OUTPUT
 
-          # Always write outputs (may be empty) — do not fail the job if no tag found
-          echo "release_tag=$tag" >> $GITHUB_OUTPUT
-          echo "release_converted=$converted" >> $GITHUB_OUTPUT
-
-      - name: Get current SHA, PKG_RELEASE and PKG_VERSION in Makefile (robust extraction)
+      - name: Get current SHA, PKG_RELEASE and version values in Makefile
         id: current_sha
         run: |
-          # extract PKG_SOURCE_VERSION SHA
           smartdns_sha=$(sed -nE 's/^[[:space:]]*PKG_SOURCE_VERSION:=[[:space:]]*([0-9a-fA-F]{7,40}).*/\1/p' Makefile || true)
-          # extract SMARTDNS_WEBUI_SOURCE_VERSION SHA
           webui_sha=$(sed -nE 's/^[[:space:]]*SMARTDNS_WEBUI_SOURCE_VERSION:=[[:space:]]*([0-9a-fA-F]{7,40}).*/\1/p' Makefile || true)
-          # extract PKG_RELEASE number
           pkg_release=$(sed -nE 's/^[[:space:]]*PKG_RELEASE:=[[:space:]]*([0-9]+).*/\1/p' Makefile || true)
-          # extract PKG_VERSION value (everything after := trimmed)
           pkg_version=$(sed -nE "s/^[[:space:]]*PKG_VERSION:=[[:space:]]*(.*)/\1/p" Makefile || true)
           pkg_version=$(echo "$pkg_version" | sed 's/[[:space:]]*$//' | sed 's/^[[:space:]]*//')
+          webui_version=$(sed -nE "s/^[[:space:]]*SMARTDNS_WEBUI_VERSION:=[[:space:]]*(.*)/\1/p" Makefile || true)
+          webui_version=$(echo "$webui_version" | sed 's/[[:space:]]*$//' | sed 's/^[[:space:]]*//')
           echo "smartdns_sha=${smartdns_sha:-}" >> $GITHUB_OUTPUT
           echo "webui_sha=${webui_sha:-}" >> $GITHUB_OUTPUT
           echo "pkg_release=${pkg_release:-}" >> $GITHUB_OUTPUT
           echo "pkg_version=${pkg_version:-}" >> $GITHUB_OUTPUT
+          echo "webui_version=${webui_version:-}" >> $GITHUB_OUTPUT
 
-      - name: Update Makefile if needed (handle PKG_VERSION / PKG_RELEASE / SHAs; concise commit messages)
+      - name: Update Makefile if needed
         env:
           SMARTDNS_SHA: ${{ steps.smartdns.outputs.sha }}
           SMARTDNS_MSG_B64: ${{ steps.smartdns.outputs.msg }}
@@ -90,106 +81,126 @@ jobs:
           SMARTDNS_WEBUI_OLD_SHA: ${{ steps.current_sha.outputs.webui_sha }}
           PKG_RELEASE: ${{ steps.current_sha.outputs.pkg_release }}
           PKG_VERSION_OLD: ${{ steps.current_sha.outputs.pkg_version }}
-          SMARTDNS_RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
-          SMARTDNS_RELEASE_CONVERTED: ${{ steps.release.outputs.release_converted }}
+          SMARTDNS_WEBUI_VERSION_OLD: ${{ steps.current_sha.outputs.webui_version }}
+          SMARTDNS_RELEASE_TAG: ${{ steps.smartdns_release.outputs.tag }}
+          SMARTDNS_WEBUI_RELEASE_TAG: ${{ steps.webui_release.outputs.tag }}
         run: |
           python3 - <<'PY'
           import os, base64, re, sys, subprocess
 
           def b64_decode(v):
-            try:
-              return base64.b64decode(v).decode('utf-8', errors='replace')
-            except Exception:
-              return ""
+              try:
+                  return base64.b64decode(v).decode('utf-8', errors='replace')
+              except Exception:
+                  return ""
 
           def short(s, limit=80):
-            s = (s or "").splitlines()[0].strip()
-            if len(s) > limit:
-              return s[:limit].rstrip() + "…"
-            return s
+              s = (s or "").splitlines()[0].strip()
+              if len(s) > limit:
+                  return s[:limit].rstrip() + "…"
+              return s
 
           repo_makefile = "Makefile"
 
-          sd_sha = os.environ.get('SMARTDNS_SHA','').strip()
-          sd_msg = b64_decode(os.environ.get('SMARTDNS_MSG_B64',''))
+          sd_sha = os.environ.get('SMARTDNS_SHA', '').strip()
+          sd_msg = b64_decode(os.environ.get('SMARTDNS_MSG_B64', ''))
           sd_msg_short = short(sd_msg, 80)
-          sd_old_sha = os.environ.get('SMARTDNS_OLD_SHA','').strip()
+          sd_old_sha = os.environ.get('SMARTDNS_OLD_SHA', '').strip()
 
-          wu_sha = os.environ.get('SMARTDNS_WEBUI_SHA','').strip()
-          wu_msg = b64_decode(os.environ.get('SMARTDNS_WEBUI_MSG_B64',''))
+          wu_sha = os.environ.get('SMARTDNS_WEBUI_SHA', '').strip()
+          wu_msg = b64_decode(os.environ.get('SMARTDNS_WEBUI_MSG_B64', ''))
           wu_msg_short = short(wu_msg, 80)
-          wu_old_sha = os.environ.get('SMARTDNS_WEBUI_OLD_SHA','').strip()
+          wu_old_sha = os.environ.get('SMARTDNS_WEBUI_OLD_SHA', '').strip()
 
-          pkg_release = os.environ.get('PKG_RELEASE','').strip()
-          pkg_version_old = (os.environ.get('PKG_VERSION_OLD','') or "").strip()
+          pkg_release = os.environ.get('PKG_RELEASE', '').strip()
+          pkg_version_old = (os.environ.get('PKG_VERSION_OLD', '') or "").strip()
+          webui_version_old = (os.environ.get('SMARTDNS_WEBUI_VERSION_OLD', '') or "").strip()
 
-          release_tag = os.environ.get('SMARTDNS_RELEASE_TAG','').strip()
-          release_converted = (os.environ.get('SMARTDNS_RELEASE_CONVERTED','') or "").strip()
+          smartdns_release_tag = os.environ.get('SMARTDNS_RELEASE_TAG', '').strip()
+          smartdns_version = smartdns_release_tag
+          webui_release_tag = os.environ.get('SMARTDNS_WEBUI_RELEASE_TAG', '').strip()
+          webui_version = webui_release_tag
+          if webui_version.startswith('v') or webui_version.startswith('V'):
+              webui_version = webui_version[1:]
 
           try:
-            with open(repo_makefile, 'r', encoding='utf-8') as f:
-              lines = f.readlines()
+              with open(repo_makefile, 'r', encoding='utf-8') as f:
+                  lines = f.readlines()
           except FileNotFoundError:
-            print("Makefile not found", file=sys.stderr)
-            sys.exit(1)
+              print("Makefile not found", file=sys.stderr)
+              sys.exit(1)
 
           changed = False
           pkg_release_updated = False
           pkg_version_updated = False
+          webui_version_updated = False
           new_lines = []
+
           for ln in lines:
-            # update smartdns commit SHA
-            if ln.lstrip().startswith("PKG_SOURCE_VERSION:="):
-              if sd_sha and sd_sha != sd_old_sha:
-                new_ln = f"PKG_SOURCE_VERSION:={sd_sha}\n"
-                if new_ln != ln:
-                  ln = new_ln
-                  changed = True
-            # update webui commit SHA
-            elif ln.lstrip().startswith("SMARTDNS_WEBUI_SOURCE_VERSION:="):
-              if wu_sha and wu_sha != wu_old_sha:
-                new_ln = f"SMARTDNS_WEBUI_SOURCE_VERSION:={wu_sha}\n"
-                if new_ln != ln:
-                  ln = new_ln
-                  changed = True
-            # update PKG_VERSION if upstream release converted changed
-            elif ln.lstrip().startswith("PKG_VERSION:="):
-              if release_converted and release_converted != pkg_version_old:
-                new_ln = f"PKG_VERSION:={release_converted}\n"
-                if new_ln != ln:
-                  ln = new_ln
-                  changed = True
-                  pkg_version_updated = True
-            # update PKG_RELEASE rules:
-            elif ln.lstrip().startswith("PKG_RELEASE:="):
-              # If PKG_VERSION changed we must reset PKG_RELEASE to 1
-              if pkg_version_updated:
-                ln = f"PKG_RELEASE:=1\n"
-                changed = True
-                pkg_release_updated = True
-              else:
-                # Only bump PKG_RELEASE when smartdns commit changed
-                if sd_sha and sd_sha != sd_old_sha:
-                  try:
-                    old = int(re.sub(r'\D','', ln.split(':=',1)[1]) or 0)
-                  except Exception:
-                    old = 0
-                  new = old + 1 if old >= 0 else 1
-                  ln = f"PKG_RELEASE:={new}\n"
-                  changed = True
-                  pkg_release_updated = True
-            new_lines.append(ln)
+              stripped = ln.lstrip()
+              if stripped.startswith("PKG_SOURCE_URL:="):
+                  target = "PKG_SOURCE_URL:=https://github.com/PikuZheng/smartdns.git\n"
+                  if target != ln:
+                      ln = target
+                      changed = True
+              elif stripped.startswith("PKG_SOURCE_VERSION:="):
+                  if sd_sha and sd_sha != sd_old_sha:
+                      new_ln = f"PKG_SOURCE_VERSION:={sd_sha}\n"
+                      if new_ln != ln:
+                          ln = new_ln
+                          changed = True
+              elif stripped.startswith("SMARTDNS_WEBUI_SOURCE_URL:="):
+                  target = "SMARTDNS_WEBUI_SOURCE_URL:=https://github.com/PikuZheng/smartdns-webui.git\n"
+                  if target != ln:
+                      ln = target
+                      changed = True
+              elif stripped.startswith("SMARTDNS_WEBUI_SOURCE_VERSION:="):
+                  if wu_sha and wu_sha != wu_old_sha:
+                      new_ln = f"SMARTDNS_WEBUI_SOURCE_VERSION:={wu_sha}\n"
+                      if new_ln != ln:
+                          ln = new_ln
+                          changed = True
+              elif stripped.startswith("PKG_VERSION:="):
+                  if smartdns_version and smartdns_version != pkg_version_old:
+                      new_ln = f"PKG_VERSION:={smartdns_version}\n"
+                      if new_ln != ln:
+                          ln = new_ln
+                          changed = True
+                          pkg_version_updated = True
+              elif stripped.startswith("SMARTDNS_WEBUI_VERSION:="):
+                  if webui_version and webui_version != webui_version_old:
+                      new_ln = f"SMARTDNS_WEBUI_VERSION:={webui_version}\n"
+                      if new_ln != ln:
+                          ln = new_ln
+                          changed = True
+                          webui_version_updated = True
+              elif stripped.startswith("PKG_RELEASE:="):
+                  if pkg_version_updated or webui_version_updated:
+                      ln = "PKG_RELEASE:=1\n"
+                      changed = True
+                      pkg_release_updated = True
+                  else:
+                      if sd_sha and sd_sha != sd_old_sha:
+                          try:
+                              old = int(re.sub(r'\D', '', ln.split(':=', 1)[1]) or 0)
+                          except Exception:
+                              old = 0
+                          new = old + 1 if old >= 0 else 1
+                          ln = f"PKG_RELEASE:={new}\n"
+                          changed = True
+                          pkg_release_updated = True
+              new_lines.append(ln)
 
           if not changed:
-            print("No update needed.")
-            sys.exit(0)
+              print("No update needed.")
+              sys.exit(0)
 
           with open(repo_makefile, 'w', encoding='utf-8') as f:
-            f.writelines(new_lines)
+              f.writelines(new_lines)
 
           def run(cmd):
-            print("+", " ".join(cmd))
-            subprocess.check_call(cmd)
+              print("+", " ".join(cmd))
+              subprocess.check_call(cmd)
 
           run(["git", "config", "user.name", "github-actions[bot]"])
           run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"])
@@ -197,22 +208,24 @@ jobs:
 
           sd_changed = bool(sd_sha and sd_sha != sd_old_sha)
           wu_changed = bool(wu_sha and wu_sha != wu_old_sha)
-          version_changed = bool(release_converted and release_converted != (pkg_version_old or "").strip())
+          version_changed = bool(smartdns_version and smartdns_version != (pkg_version_old or "").strip())
+          webui_ver_changed = bool(webui_version and webui_version != (webui_version_old or "").strip())
 
           parts = []
           if version_changed:
-            vt = release_tag or release_converted
-            parts.append(f"PKG_VERSION -> {release_converted} (tag:{vt})")
+              parts.append(f"PKG_VERSION -> {smartdns_version}")
+          if webui_ver_changed:
+              parts.append(f"SMARTDNS_WEBUI_VERSION -> {webui_version}")
           if sd_changed:
-            parts.append(f"smartdns:{sd_msg_short}")
+              parts.append(f"smartdns:{sd_msg_short}")
           if wu_changed:
-            parts.append(f"webui:{wu_msg_short}")
+              parts.append(f"webui:{wu_msg_short}")
 
           if parts:
-            commit_msg = "Update: " + "; ".join(parts)
+              commit_msg = "Update: " + "; ".join(parts)
           else:
-            print("No relevant changes detected for commit message.")
-            sys.exit(0)
+              print("No relevant changes detected for commit message.")
+              sys.exit(0)
 
           run(["git", "commit", "-m", commit_msg])
           run(["git", "push"])
@@ -225,15 +238,14 @@ jobs:
           echo "smartdns_msg_b64=${{ steps.smartdns.outputs.msg }}"
           echo "webui_sha=${{ steps.webui.outputs.sha }}"
           echo "webui_msg_b64=${{ steps.webui.outputs.msg }}"
-          echo "release_tag=${{ steps.release.outputs.release_tag }}"
-          echo "release_converted=${{ steps.release.outputs.release_converted }}"
+          echo "smartdns_release_tag=${{ steps.smartdns_release.outputs.tag }}"
+          echo "webui_release_tag=${{ steps.webui_release.outputs.tag }}"
           echo "pkg_version=${{ steps.current_sha.outputs.pkg_version }}"
           echo "pkg_release=${{ steps.current_sha.outputs.pkg_release }}"
-          
+
       - name: Delete workflow runs
         uses: ophub/delete-releases-workflows@main
         with:
           delete_workflows: true
           workflows_keep_day: 5
           gh_token: ${{ secrets.GITHUB_TOKEN }}
-          
