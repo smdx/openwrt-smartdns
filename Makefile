@@ -6,18 +6,18 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=smartdns
-PKG_VERSION:=1.2026.48.4
-PKG_RELEASE:=3
+PKG_VERSION:=1.2026.v48.4.3_with_ui
+PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL:=https://www.github.com/pymumu/smartdns.git
-PKG_SOURCE_VERSION:=dfc9ef4bd947891178924c06070fbccc3ea370ba
+PKG_SOURCE_URL:=https://github.com/PikuZheng/smartdns.git
+PKG_SOURCE_VERSION:=cedc38830fabd2e0b4548b31d8b376648a271a51
 # PKG_MIRROR_HASH:=skip
 
-SMARTDNS_WEBUI_VERSION:=1.0.0
+SMARTDNS_WEBUI_VERSION:=0.1.2
 SMARTDNS_WEBUI_SOURCE_PROTO:=git
-SMARTDNS_WEBUI_SOURCE_URL:=https://github.com/pymumu/smartdns-webui.git
-SMARTDNS_WEBUI_SOURCE_VERSION:=1c06fee693434ec7c71f06010d3f87416baba9f0
+SMARTDNS_WEBUI_SOURCE_URL:=https://github.com/PikuZheng/smartdns-webui.git
+SMARTDNS_WEBUI_SOURCE_VERSION:=4667a7dae18b9776576cda6c98be649703fe671a
 SMARTDNS_WEBUI_FILE:=smartdns-webui-$(SMARTDNS_WEBUI_VERSION).tar.gz
 
 PKG_MAINTAINER:=Nick Peng <pymumu@gmail.com>
@@ -40,7 +40,7 @@ define Package/smartdns/default
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=IP Addresses and Names
-  URL:=https://www.github.com/pymumu/smartdns/
+  URL:=https://www.github.com/PikuZheng/smartdns/
 endef
 
 define Package/smartdns
