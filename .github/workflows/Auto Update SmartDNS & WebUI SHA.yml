@@ -13,28 +13,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Get latest smartdns commit SHA and message (base64)
+      - name: Get latest smartdns tag, commit SHA and message (base64)
         id: smartdns
-        run: |
-          git clone --depth 1 https://github.com/PikuZheng/smartdns temp-smartdns
-          echo "sha=$(git -C temp-smartdns rev-parse HEAD)" >> $GITHUB_OUTPUT
-          msg=$(git -C temp-smartdns log -1 --pretty=format:'%s' | base64 -w0)
-          echo "msg=$msg" >> $GITHUB_OUTPUT
-
-      - name: Get latest smartdns-webui commit SHA and message (base64)
-        id: webui
-        run: |
-          git clone --depth 1 https://github.com/PikuZheng/smartdns-webui temp-smartdns-webui
-          echo "sha=$(git -C temp-smartdns-webui rev-parse HEAD)" >> $GITHUB_OUTPUT
-          msg=$(git -C temp-smartdns-webui log -1 --pretty=format:'%s' | base64 -w0)
-          echo "msg=$msg" >> $GITHUB_OUTPUT
-
-      - name: Get latest smartdns release tag
-        id: smartdns_release
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, os, re
+          import base64
+          import json
+          import os
+          import re
           from urllib.request import Request, urlopen
 
           def fetch(url):
@@ -46,10 +33,10 @@ jobs:
                   return json.loads(resp.read().decode("utf-8"))
 
           def parse_version(tag):
-              matches = re.findall(r'v?(\d+)\.(\d+)\.(\d+)', tag)
-              if not matches:
+              m = re.search(r'v?(\d+)\.(\d+)\.(\d+)', tag)
+              if not m:
                   return (0, 0, 0)
-              return tuple(int(x) for x in matches[-1])
+              return tuple(int(x) for x in m.groups())
 
           def is_ui_tag(tag):
               s = tag.lower()
@@ -65,52 +52,51 @@ jobs:
               stable = 1 if "_with_ui" in s and "-canary" not in s else 0
               return version + (stable,)
 
+          tags = fetch("https://api.github.com/repos/PikuZheng/smartdns/tags?per_page=100")
           candidates = []
-          try:
-              tags = fetch("https://api.github.com/repos/PikuZheng/smartdns/tags?per_page=100")
-              if isinstance(tags, list):
-                  for tag in tags:
-                      name = str(tag.get("name", "")).strip()
-                      if name and is_ui_tag(name):
-                          candidates.append(name)
-          except Exception:
-              candidates = []
+          for item in tags:
+              name = str(item.get("name", "")).strip()
+              if name and is_ui_tag(name):
+                  candidates.append(name)
 
           if not candidates:
-              try:
-                  rel = fetch("https://api.github.com/repos/PikuZheng/smartdns/releases/latest")
-                  tag = str(rel.get("tag_name") or rel.get("name") or "").strip()
-                  if tag and is_ui_tag(tag):
-                      candidates = [tag]
-              except Exception:
-                  candidates = []
+              raise SystemExit("No valid _with_ui tag found for smartdns.")
 
-          if not candidates:
-              try:
-                  tags = fetch("https://api.github.com/repos/PikuZheng/smartdns/tags?per_page=100")
-                  if isinstance(tags, list):
-                      candidates = [str(tag.get("name", "")).strip() for tag in tags if str(tag.get("name", "")).strip()]
-              except Exception:
-                  candidates = [""]
+          selected = max(candidates, key=sort_key)
+          print(f"SELECTED_TAG={selected}")
 
-          selected = max(candidates, key=sort_key) if candidates else ""
+          ref = fetch(f"https://api.github.com/repos/PikuZheng/smartdns/git/ref/tags/{selected}")
+          obj = ref.get("object", {})
+          obj_type = obj.get("type")
+          obj_sha = obj.get("sha")
+
+          if obj_type == "tag":
+              tag_obj = fetch(f"https://api.github.com/repos/PikuZheng/smartdns/git/tags/{obj_sha}")
+              obj_sha = tag_obj.get("object", {}).get("sha")
+
+          if not obj_sha:
+              raise SystemExit(f"Failed to resolve tag commit for {selected}")
+
+          commit = fetch(f"https://api.github.com/repos/PikuZheng/smartdns/git/commits/{obj_sha}")
+          message = commit.get("message", "").splitlines()[0].strip()
+          msg_b64 = base64.b64encode(message.encode("utf-8")).decode("utf-8")
+
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"tag={selected}\n")
-          print(f"selected smartdns tag: {selected}")
+              f.write(f"sha={obj_sha}\n")
+              f.write(f"msg={msg_b64}\n")
+
+          print(f"SHA={obj_sha}")
+          print(f"MSG={message}")
           PY
 
-      - name: Get latest smartdns-webui release tag
-        id: webui_release
+      - name: Get latest smartdns-webui commit SHA and message (base64)
+        id: webui
         run: |
-          set -euo pipefail
-          resp=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/PikuZheng/smartdns-webui/releases/latest" || true)
-          tag=$(echo "$resp" | jq -r '.tag_name // .name // empty' 2>/dev/null || true)
-          if [ -z "$tag" ]; then
-            resp2=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/PikuZheng/smartdns-webui/tags?per_page=1" || true)
-            tag=$(echo "$resp2" | jq -r '.[0].name // empty' 2>/dev/null || true)
-          fi
-          tag=$(echo "$tag" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-          echo "tag=$tag" >> $GITHUB_OUTPUT
+          git clone --depth 1 https://github.com/PikuZheng/smartdns-webui temp-smartdns-webui
+          echo "sha=$(git -C temp-smartdns-webui rev-parse HEAD)" >> $GITHUB_OUTPUT
+          msg=$(git -C temp-smartdns-webui log -1 --pretty=format:'%s' | base64 -w0)
+          echo "msg=$msg" >> $GITHUB_OUTPUT
 
       - name: Get current SHA, PKG_RELEASE and version values in Makefile
         id: current_sha
@@ -139,7 +125,7 @@ jobs:
           PKG_RELEASE: ${{ steps.current_sha.outputs.pkg_release }}
           PKG_VERSION_OLD: ${{ steps.current_sha.outputs.pkg_version }}
           SMARTDNS_WEBUI_VERSION_OLD: ${{ steps.current_sha.outputs.webui_version }}
-          SMARTDNS_RELEASE_TAG: ${{ steps.smartdns_release.outputs.tag }}
+          SMARTDNS_RELEASE_TAG: ${{ steps.smartdns.outputs.tag }}
           SMARTDNS_WEBUI_RELEASE_TAG: ${{ steps.webui_release.outputs.tag }}
         run: |
           python3 - <<'PY'
@@ -175,6 +161,9 @@ jobs:
 
           smartdns_release_tag = os.environ.get('SMARTDNS_RELEASE_TAG', '').strip()
           smartdns_version = smartdns_release_tag
+          if smartdns_version and not smartdns_version.startswith("1.2026."):
+              smartdns_version = "1.2026." + smartdns_version
+
           webui_release_tag = os.environ.get('SMARTDNS_WEBUI_RELEASE_TAG', '').strip()
           webui_version = webui_release_tag
           if webui_version.startswith('v') or webui_version.startswith('V'):
@@ -288,14 +277,27 @@ jobs:
           run(["git", "push"])
           PY
 
+      - name: Get latest smartdns-webui release tag
+        id: webui_release
+        run: |
+          set -euo pipefail
+          resp=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/PikuZheng/smartdns-webui/releases/latest" || true)
+          tag=$(echo "$resp" | jq -r '.tag_name // .name // empty' 2>/dev/null || true)
+          if [ -z "$tag" ]; then
+            resp2=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/PikuZheng/smartdns-webui/tags?per_page=1" || true)
+            tag=$(echo "$resp2" | jq -r '.[0].name // empty' 2>/dev/null || true)
+          fi
+          tag=$(echo "$tag" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
       - name: Show result
         if: always()
         run: |
           echo "smartdns_sha=${{ steps.smartdns.outputs.sha }}"
           echo "smartdns_msg_b64=${{ steps.smartdns.outputs.msg }}"
+          echo "smartdns_tag=${{ steps.smartdns.outputs.tag }}"
           echo "webui_sha=${{ steps.webui.outputs.sha }}"
           echo "webui_msg_b64=${{ steps.webui.outputs.msg }}"
-          echo "smartdns_release_tag=${{ steps.smartdns_release.outputs.tag }}"
           echo "webui_release_tag=${{ steps.webui_release.outputs.tag }}"
           echo "pkg_version=${{ steps.current_sha.outputs.pkg_version }}"
           echo "pkg_release=${{ steps.current_sha.outputs.pkg_release }}"
