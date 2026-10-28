@@ -33,14 +33,71 @@ jobs:
         id: smartdns_release
         run: |
           set -euo pipefail
-          resp=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/PikuZheng/smartdns/releases/latest" || true)
-          tag=$(echo "$resp" | jq -r '.tag_name // .name // empty' 2>/dev/null || true)
-          if [ -z "$tag" ]; then
-            resp2=$(curl -sSL -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/PikuZheng/smartdns/tags?per_page=1" || true)
-            tag=$(echo "$resp2" | jq -r '.[0].name // empty' 2>/dev/null || true)
-          fi
-          tag=$(echo "$tag" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-          echo "tag=$tag" >> $GITHUB_OUTPUT
+          python3 - <<'PY'
+          import json, os, re
+          from urllib.request import Request, urlopen
+
+          def fetch(url):
+              req = Request(url, headers={
+                  "Accept": "application/vnd.github+json",
+                  "User-Agent": "openwrt-smartdns-workflow"
+              })
+              with urlopen(req, timeout=30) as resp:
+                  return json.loads(resp.read().decode("utf-8"))
+
+          def parse_version(tag):
+              matches = re.findall(r'v?(\d+)\.(\d+)\.(\d+)', tag)
+              if not matches:
+                  return (0, 0, 0)
+              return tuple(int(x) for x in matches[-1])
+
+          def is_ui_tag(tag):
+              s = tag.lower()
+              if "_with_ui" not in s:
+                  return False
+              if "openssl" in s:
+                  return False
+              return True
+
+          def sort_key(tag):
+              s = tag.lower()
+              version = parse_version(tag)
+              stable = 1 if "_with_ui" in s and "-canary" not in s else 0
+              return version + (stable,)
+
+          candidates = []
+          try:
+              tags = fetch("https://api.github.com/repos/PikuZheng/smartdns/tags?per_page=100")
+              if isinstance(tags, list):
+                  for tag in tags:
+                      name = str(tag.get("name", "")).strip()
+                      if name and is_ui_tag(name):
+                          candidates.append(name)
+          except Exception:
+              candidates = []
+
+          if not candidates:
+              try:
+                  rel = fetch("https://api.github.com/repos/PikuZheng/smartdns/releases/latest")
+                  tag = str(rel.get("tag_name") or rel.get("name") or "").strip()
+                  if tag and is_ui_tag(tag):
+                      candidates = [tag]
+              except Exception:
+                  candidates = []
+
+          if not candidates:
+              try:
+                  tags = fetch("https://api.github.com/repos/PikuZheng/smartdns/tags?per_page=100")
+                  if isinstance(tags, list):
+                      candidates = [str(tag.get("name", "")).strip() for tag in tags if str(tag.get("name", "")).strip()]
+              except Exception:
+                  candidates = [""]
+
+          selected = max(candidates, key=sort_key) if candidates else ""
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"tag={selected}\n")
+          print(f"selected smartdns tag: {selected}")
+          PY
 
       - name: Get latest smartdns-webui release tag
         id: webui_release
