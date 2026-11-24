@@ -6,12 +6,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=smartdns
-PKG_VERSION:=1.2026.v48.5.2_with_ui
+PKG_VERSION:=1.2026.v48.5.3_with_ui-canary
 PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/PikuZheng/smartdns.git
-PKG_SOURCE_VERSION:=476e8e7b3cc338477bccf2c1d47fca409d2adef2
+PKG_SOURCE_VERSION:=a1518214d7ab9f5135bae85fb3429a827c817570
 # PKG_MIRROR_HASH:=skip
 
 SMARTDNS_WEBUI_VERSION:=0.1.2
